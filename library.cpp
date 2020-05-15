@@ -10,13 +10,6 @@ extern "C" {
 
 #define MAXIMUM_TURTLE_FUEL 20000
 
-int turtle_(lua_State *L) {
-    Computer * computer = get_comp(L);
-    if (computer->userdata.find(TURTLE_PLUGIN_USERDATA_KEY) == computer->userdata.end()) luaL_error(L, "Attempted to use turtle API on non-turtle");
-    turtle_userdata * data = (turtle_userdata*)computer->userdata[TURTLE_PLUGIN_USERDATA_KEY];
-
-}
-
 #define turtle_getdata() Computer * computer = get_comp(L);\
     if (computer->userdata.find(TURTLE_PLUGIN_USERDATA_KEY) == computer->userdata.end()) luaL_error(L, "Attempted to use turtle API on non-turtle");\
     turtle_userdata * data = (turtle_userdata*)computer->userdata[TURTLE_PLUGIN_USERDATA_KEY];
@@ -25,6 +18,38 @@ int turtle_(lua_State *L) {
 #define check_upgrade(up, msg) if (data->leftUpgrade != turtle_userdata::upgrade::up && data->rightUpgrade != turtle_userdata::upgrade::up) turtle_failure(msg);
 #define turtle_movement_wait() {std::this_thread::sleep_until(data->nextMovementTime); data->nextMovementTime = std::chrono::system_clock::now() + std::chrono::milliseconds(400);}
 #define STUB turtle_failure("Not implemented")
+
+std::unordered_map<int, std::unordered_map<uint8_t, std::unordered_map<int, block> > > world;
+
+block getBlockAtPos(int x, uint8_t y, int z) {
+    if (world.find(x) == world.end()) return block();
+    std::unordered_map<uint8_t, std::unordered_map<int, block> >& yz = world[x];
+    if (yz.find(y) == yz.end()) return block();
+    std::unordered_map<int, block>& zz = yz[y];
+    if (zz.find(z) == zz.end()) return block();
+    else return zz[z];
+}
+
+void setBlockAtPos(int x, uint8_t y, int z, block b) {
+    if (world.find(x) == world.end()) world.insert(std::make_pair(x, std::unordered_map<uint8_t, std::unordered_map<int, block> >()));
+    std::unordered_map<uint8_t, std::unordered_map<int, block> >& yz = world[x];
+    if (yz.find(y) == yz.end()) yz.insert(std::make_pair(y, std::unordered_map<int, block>()));
+    std::unordered_map<int, block>& zz = yz[y];
+    if (zz.find(z) == zz.end()) zz.insert(std::make_pair(z, b));
+    else zz[z] = b;
+}
+
+void getCoordsForDirection(turtle_userdata * data, int& x, uint8_t& y, int& z) {
+    x = data->x;
+    y = data->y;
+    z = data->z;
+    switch (data->orientation) {
+        case turtle_userdata::direction::north: z--; return;
+        case turtle_userdata::direction::south: z++; return;
+        case turtle_userdata::direction::east: x++; return;
+        case turtle_userdata::direction::west: x--; return;
+    }
+}
 
 int turtle_craft(lua_State *L) {
     turtle_getdata();
@@ -221,9 +246,78 @@ int turtle_placeDown(lua_State *L) STUB
 int turtle_detect(lua_State *L) STUB
 int turtle_detectUp(lua_State *L) STUB
 int turtle_detectDown(lua_State *L) STUB
-int turtle_inspect(lua_State *L) STUB
-int turtle_inspectUp(lua_State *L) STUB
-int turtle_inspectDown(lua_State *L) STUB
+
+int turtle_inspect(lua_State *L) {
+    turtle_getdata();
+    int x, z;
+    uint8_t y;
+    getCoordsForDirection(data, x, y, z);
+    block b = getBlockAtPos(x, y, z);
+    if (b.id == "minecraft:air" || b.id.empty()) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    lua_pushboolean(L, true);
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, b.id.c_str());
+    lua_setfield(L, -2, "name");
+    lua_newtable(L);
+    for (auto s : b.state) {
+        lua_pushstring(L, s.second.c_str());
+        lua_setfield(L, -2, s.first.c_str());
+    }
+    lua_setfield(L, -2, "state");
+    return 2;
+}
+
+int turtle_inspectUp(lua_State *L) {
+    turtle_getdata();
+    if (data->y == 255) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    block b = getBlockAtPos(data->x, data->y+1, data->z);
+    if (b.id == "minecraft:air" || b.id.empty()) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    lua_pushboolean(L, true);
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, b.id.c_str());
+    lua_setfield(L, -2, "name");
+    lua_newtable(L);
+    for (auto s : b.state) {
+        lua_pushstring(L, s.second.c_str());
+        lua_setfield(L, -2, s.first.c_str());
+    }
+    lua_setfield(L, -2, "state");
+    return 2;
+}
+
+int turtle_inspectDown(lua_State *L) {
+    turtle_getdata();
+    if (data->y == 0) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    block b = getBlockAtPos(data->x, data->y-1, data->z);
+    if (b.id == "minecraft:air" || b.id.empty()) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    lua_pushboolean(L, true);
+    lua_createtable(L, 0, 2);
+    lua_pushstring(L, b.id.c_str());
+    lua_setfield(L, -2, "name");
+    lua_newtable(L);
+    for (auto s : b.state) {
+        lua_pushstring(L, s.second.c_str());
+        lua_setfield(L, -2, s.first.c_str());
+    }
+    lua_setfield(L, -2, "state");
+    return 2;
+}
+
 int turtle_compare(lua_State *L) STUB
 int turtle_compareUp(lua_State *L) STUB
 int turtle_compareDown(lua_State *L) STUB

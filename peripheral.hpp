@@ -8,6 +8,12 @@ struct item {
     int8_t count = 0;
 };
 
+struct block {
+    std::string id = "minecraft:air";
+    std::unordered_map<std::string, std::string> state;
+    item droppedItem;
+};
+
 struct turtle_userdata {
     enum class upgrade {
         none,
@@ -40,6 +46,17 @@ struct turtle_userdata {
 };
 
 class turtle: public peripheral {
+    Computer * comp;
+    Computer * thiscomp;
+    int turnOn(lua_State *L);
+    int shutdown(lua_State *L);
+    int reboot(lua_State *L);
+    int getID(lua_State *L);
+    int isOn(lua_State *L);
+    int getLabel(lua_State *L);
+    int setBlock(lua_State *L);
+    int setSlotContents(lua_State *L);
+    int teleport(lua_State *L);
 public:
     static library_t methods;
     turtle(lua_State *L, const char * side);
