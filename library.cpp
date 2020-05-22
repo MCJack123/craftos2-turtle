@@ -7,6 +7,7 @@ extern "C" {
 #include <chrono>
 #include <thread>
 #include <unordered_map>
+#include <json/json.h>
 
 #define MAXIMUM_TURTLE_FUEL 20000
 
@@ -20,6 +21,10 @@ extern "C" {
 #define STUB turtle_failure("Not implemented")
 
 std::unordered_map<int, std::unordered_map<uint8_t, std::unordered_map<int, block> > > world;
+
+Json::Value itemDatabase;
+Json::Value blockDatabase;
+Json::Value recipeDatabase;
 
 block getBlockAtPos(int x, uint8_t y, int z) {
     if (world.find(x) == world.end()) return block();
@@ -54,18 +59,155 @@ void getCoordsForDirection(turtle_userdata * data, int& x, uint8_t& y, int& z) {
 int turtle_craft(lua_State *L) {
     turtle_getdata();
     check_upgrade(workbench, "No crafting table to craft with");
-    STUB
+    int maxAmount = luaL_optinteger(L, 1, 64);
+    if (maxAmount > 64) maxAmount = 64;
+    else if (maxAmount <= 0) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    // oh god this is going to be slow, is there any better way to do this???
+    int inventoryIDs[4][4];
+    for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
+        if (data->inventory[y*4+x].id.empty()) inventoryIDs[3-y][x] = 0;
+        else for (Json::ValueIterator it = itemDatabase.begin(); it != itemDatabase.end(); it++)
+            if (data->inventory[y*4+x].id == "minecraft:" + (*it)["name"].asString()) {
+                inventoryIDs[3-y][x] = (*it)["id"].asInt();
+                break;
+            }
+    }
+    for (Json::ValueIterator it = recipeDatabase.begin(); it != recipeDatabase.end(); it++) {
+        for (Json::ValueIterator it2 = it->begin(); it2 != it->end(); it2++) {
+            if (it2->isMember("inShape")) { // shaped recipe
+                Json::Value &shape = (*it2)["inShape"];
+                bool found = false;
+                int starty, startx;
+                for (starty = 0; starty < 5 - shape.size(); starty++) {
+                    for (startx = 0; startx < 4; startx++) {
+                        bool stop_b = false;
+                        found = true;
+                        for (int y = 0; y < shape.size(); y++) {
+                            if (startx + shape[y].size() > 4) {
+                                stop_b = true;
+                                found = false;
+                                break;
+                            }
+                            bool stop_a = false;
+                            for (int x = 0; x < shape[y].size(); x++) {
+                                if (shape[y][x].isInt() && shape[y][x].asInt() != inventoryIDs[starty+y][startx+x]) {
+                                    stop_a = true;
+                                    found = false;
+                                    break;
+                                }
+                            }
+                            if (stop_a) break;
+                        }
+                        if (stop_b || found) break;
+                    }
+                    if (found) break;
+                }
+                if (found) {
+                    item targetItem;
+                    for (Json::ValueIterator it3 = itemDatabase.begin(); it3 != itemDatabase.end(); it3++) {
+                        if ((*it3)["id"].asInt() == (*it2)["result"]["id"].asInt()) {
+                            targetItem.id = "minecraft:" + (*it3)["name"].asString();
+                            break;
+                        }
+                    }
+                    if (targetItem.id.empty()) turtle_failure("Could not find item name from ID");
+                    int targetSlot = data->selectedItem-1;
+                    if (data->inventory[targetSlot].count && data->inventory[targetSlot].id != targetItem.id) {
+                        for (int i = 0; i < 16; i++) {
+                            if (data->inventory[i].id.empty() || data->inventory[i].id == targetItem.id) {
+                                targetSlot = i;
+                                break;
+                            }
+                        }
+                        if (targetSlot == data->selectedItem-1) turtle_failure("No room for result");
+                    }
+                    bool stop_d = false;
+                    turtle_failure("Not implemented yet");
+                    //for (targetItem.count = 0; targetItem.count < maxAmount; targetItem.count++) {
+
+                    //}
+                }
+            } else { // shapeless recipe
+                int itemSlots[16];
+                int usedSlots = (*it2)["ingredients"].size();
+                bool stop_c = false;
+                for (int i = 0; i < usedSlots; i++) {
+                    itemSlots[i] = -1;
+                    for (int y = 0; y < 4; y++) {
+                        bool stop_b = false;
+                        for (int x = 0; x < 4; x++) {
+                            bool stop_a = false;
+                            for (int j = 0; j < i; j++) {
+                                if (itemSlots[j] == y*4+x) {
+                                    stop_a = true;
+                                    break;
+                                }
+                            }
+                            if (!stop_a && inventoryIDs[y][x] == (*it2)["ingredients"][y].asInt()) {
+                                itemSlots[i] = y*4+x;
+                                stop_b = true;
+                                break;
+                            }
+                        }
+                        if (stop_b) break;
+                    }
+                    if (itemSlots[i] == -1) {
+                        stop_c = true;
+                        break;
+                    }
+                }
+                if (!stop_c) {
+                    item targetItem;
+                    for (Json::ValueIterator it3 = itemDatabase.begin(); it3 != itemDatabase.end(); it3++) {
+                        if ((*it3)["id"].asInt() == (*it2)["result"]["id"].asInt()) {
+                            targetItem.id = "minecraft:" + (*it3)["name"].asString();
+                            break;
+                        }
+                    }
+                    if (targetItem.id.empty()) turtle_failure("Could not find item name from ID");
+                    int targetSlot = data->selectedItem-1;
+                    if (data->inventory[targetSlot].count && data->inventory[targetSlot].id != targetItem.id) {
+                        for (int i = 0; i < 16; i++) {
+                            if (data->inventory[i].id.empty() || data->inventory[i].id == targetItem.id) {
+                                targetSlot = i;
+                                break;
+                            }
+                        }
+                        if (targetSlot == data->selectedItem-1) turtle_failure("No room for result");
+                    }
+                    bool stop_d = false;
+                    for (targetItem.count = 0; targetItem.count + (*it2)["result"]["count"].asInt() <= maxAmount && (data->inventory[targetSlot].id.empty() || targetItem.count + data->inventory[targetSlot].count + (*it2)["result"]["count"].asInt() <= 64) && !stop_d; targetItem.count += (*it2)["result"]["count"].asInt()) {
+                        for (int i = 0; i < usedSlots; i++) {
+                            if (--data->inventory[itemSlots[i]].count <= 0) {
+                                data->inventory[itemSlots[i]].id.clear();
+                                stop_d = true;
+                            }
+                        }
+                    }
+                    if (data->inventory[targetSlot].count) data->inventory[targetSlot].count += targetItem.count;
+                    else data->inventory[targetSlot] = targetItem;
+                    turtle_success();
+                }
+            }
+        }
+    }
+    turtle_failure("No items to craft");
 }
 
 int turtle_forward(lua_State *L) {
     turtle_getdata();
     if (data->fuelLevel == 0) turtle_failure("Out of fuel");
-    switch (data->orientation) {
-        case turtle_userdata::direction::north: data->z--; break;
-        case turtle_userdata::direction::south: data->z++; break;
-        case turtle_userdata::direction::east: data->x++; break;
-        case turtle_userdata::direction::west: data->x--; break;
-    }
+    int x, z;
+    uint8_t y;
+    getCoordsForDirection(data, x, y, z);
+    if (getBlockAtPos(x, y, z).id != "minecraft:air") turtle_failure("Movement obstructed");
+    setBlockAtPos(data->x, data->y, data->z, block());
+    data->x = x;
+    data->z = z;
+    setBlockAtPos(data->x, data->y, data->z, block("computercraft:turtle"));
     data->fuelLevel--;
     turtle_movement_wait();
     turtle_success();
@@ -75,11 +217,28 @@ int turtle_back(lua_State *L) {
     turtle_getdata();
     if (data->fuelLevel == 0) turtle_failure("Out of fuel");
     switch (data->orientation) {
-        case turtle_userdata::direction::north: data->z++; break;
-        case turtle_userdata::direction::south: data->z--; break;
-        case turtle_userdata::direction::east: data->x--; break;
-        case turtle_userdata::direction::west: data->x++; break;
+        case turtle_userdata::direction::north:
+            if (getBlockAtPos(data->x, data->y, data->z+1).id != "minecraft:air") turtle_failure("Movement obstructed");
+            setBlockAtPos(data->x, data->y, data->z, block());
+            data->z++; 
+            break;
+        case turtle_userdata::direction::south:
+            if (getBlockAtPos(data->x, data->y, data->z-1).id != "minecraft:air") turtle_failure("Movement obstructed");
+            setBlockAtPos(data->x, data->y, data->z, block());
+            data->z--; 
+            break;
+        case turtle_userdata::direction::east:
+            if (getBlockAtPos(data->x-1, data->y, data->z).id != "minecraft:air") turtle_failure("Movement obstructed");
+            setBlockAtPos(data->x, data->y, data->z, block());
+            data->x--; 
+            break;
+        case turtle_userdata::direction::west:
+            if (getBlockAtPos(data->x+1, data->y, data->z).id != "minecraft:air") turtle_failure("Movement obstructed");
+            setBlockAtPos(data->x, data->y, data->z, block());
+            data->x++; 
+            break;
     }
+    setBlockAtPos(data->x, data->y, data->z, block("computercraft:turtle"));
     data->fuelLevel--;
     turtle_movement_wait();
     turtle_success();
@@ -89,7 +248,10 @@ int turtle_up(lua_State *L) {
     turtle_getdata();
     if (data->fuelLevel == 0) turtle_failure("Out of fuel");
     if (data->y == 255) turtle_failure("Too high to move");
+    if (getBlockAtPos(data->x, data->y+1, data->z).id != "minecraft:air") turtle_failure("Movement obstructed");
+    setBlockAtPos(data->x, data->y, data->z, block());
     data->y++;
+    setBlockAtPos(data->x, data->y, data->z, block("computercraft:turtle"));
     data->fuelLevel--;
     turtle_movement_wait();
     turtle_success();
@@ -99,7 +261,10 @@ int turtle_down(lua_State *L) {
     turtle_getdata();
     if (data->fuelLevel == 0) turtle_failure("Out of fuel");
     if (data->y == 0) turtle_failure("Too low to move");
+    if (getBlockAtPos(data->x, data->y-1, data->z).id != "minecraft:air") turtle_failure("Movement obstructed");
+    setBlockAtPos(data->x, data->y, data->z, block());
     data->y--;
+    setBlockAtPos(data->x, data->y, data->z, block("computercraft:turtle"));
     data->fuelLevel--;
     turtle_movement_wait();
     turtle_success();
@@ -318,10 +483,49 @@ int turtle_inspectDown(lua_State *L) {
     return 2;
 }
 
-int turtle_compare(lua_State *L) STUB
-int turtle_compareUp(lua_State *L) STUB
-int turtle_compareDown(lua_State *L) STUB
-int turtle_compareTo(lua_State *L) STUB
+int turtle_compare(lua_State *L) {
+    turtle_getdata();
+    int x, z;
+    uint8_t y;
+    getCoordsForDirection(data, x, y, z);
+    block b = getBlockAtPos(x, y, z);
+    if (b.id == "minecraft:air" || b.id.empty()) lua_pushboolean(L, data->inventory[data->selectedItem-1].id.empty());
+    else lua_pushboolean(L, data->inventory[data->selectedItem-1].id == b.id);
+    return 1;
+}
+
+int turtle_compareUp(lua_State *L) {
+    turtle_getdata();
+    if (data->y == 255) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    block b = getBlockAtPos(data->x, data->y+1, data->z);
+    if (b.id == "minecraft:air" || b.id.empty()) lua_pushboolean(L, data->inventory[data->selectedItem-1].id.empty());
+    else lua_pushboolean(L, data->inventory[data->selectedItem-1].id == b.id);
+    return 1;
+}
+
+int turtle_compareDown(lua_State *L) {
+    turtle_getdata();
+    if (data->y == 0) {
+        lua_pushboolean(L, false);
+        return 1;
+    }
+    block b = getBlockAtPos(data->x, data->y-1, data->z);
+    if (b.id == "minecraft:air" || b.id.empty()) lua_pushboolean(L, data->inventory[data->selectedItem-1].id.empty());
+    else lua_pushboolean(L, data->inventory[data->selectedItem-1].id == b.id);
+    return 1;
+}
+
+int turtle_compareTo(lua_State *L) {
+    turtle_getdata();
+    int slot = luaL_checkinteger(L, 1);
+    if (slot < 1 || slot > 16) luaL_error(L, "Slot number %d out of range", slot);
+    lua_pushboolean(L, data->inventory[data->selectedItem-1].id == data->inventory[slot-1].id);
+    return 1;
+}
+
 int turtle_drop(lua_State *L) STUB
 int turtle_dropUp(lua_State *L) STUB
 int turtle_dropDown(lua_State *L) STUB
@@ -392,11 +596,11 @@ int turtle_refuel(lua_State *L) {
     turtle_getdata();
     if (data->inventory[data->selectedItem-1].count == 0) turtle_failure("No items to combust");
     if (fuelMap.find(data->inventory[data->selectedItem-1].id) == fuelMap.end()) turtle_failure("Items not combustible");
-    for (int count = luaL_optinteger(L, 1, data->inventory[data->selectedItem].count); count > 0 && data->inventory[data->selectedItem].count > 0 && data->fuelLevel < 20000; count--, data->inventory[data->selectedItem].count--) {
+    for (int count = luaL_optinteger(L, 1, data->inventory[data->selectedItem-1].count); count > 0 && data->inventory[data->selectedItem-1].count > 0 && data->fuelLevel < 20000; count--, data->inventory[data->selectedItem-1].count--) {
         unsigned newValue = data->fuelLevel + fuelMap[data->inventory[data->selectedItem-1].id];
         data->fuelLevel = newValue > 20000 ? 20000 : newValue;
     }
-    if (data->inventory[data->selectedItem].count == 0) data->inventory[data->selectedItem].id.clear();
+    if (data->inventory[data->selectedItem-1].count == 0) data->inventory[data->selectedItem-1].id.clear();
     turtle_success();
 }
 

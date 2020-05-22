@@ -12,6 +12,8 @@ struct block {
     std::string id = "minecraft:air";
     std::unordered_map<std::string, std::string> state;
     item droppedItem;
+    block(){}
+    block(std::string i): id(i) {}
 };
 
 struct turtle_userdata {
@@ -57,6 +59,7 @@ class turtle: public peripheral {
     int setBlock(lua_State *L);
     int setSlotContents(lua_State *L);
     int teleport(lua_State *L);
+    int getLocation(lua_State *L);
 public:
     static library_t methods;
     turtle(lua_State *L, const char * side);

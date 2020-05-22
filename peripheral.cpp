@@ -99,6 +99,14 @@ int turtle::teleport(lua_State *L) {
     return 0;
 }
 
+int turtle::getLocation(lua_State *L) {
+    turtle_userdata * data = (turtle_userdata*)comp->userdata[TURTLE_PLUGIN_USERDATA_KEY];
+    lua_pushinteger(L, data->x);
+    lua_pushinteger(L, data->y);
+    lua_pushinteger(L, data->z);
+    return 3;
+}
+
 turtle::turtle(lua_State *L, const char * side) {
     if (strlen(side) < 8 || std::string(side).substr(0, 7) != "turtle_" || (strlen(side) > 7 && !std::all_of(side + 7, side + strlen(side), ::isdigit))) 
         throw std::invalid_argument("\"side\" parameter must be in the form of turtle_[0-9]+");
@@ -136,10 +144,11 @@ int turtle::call(lua_State *L, const char * method) {
     else if (m == "setBlock") return setBlock(L);
     else if (m == "setSlotContents") return setSlotContents(L);
     else if (m == "teleport" || m == "setPosition") return teleport(L);
+    else if (m == "getLocation") return getLocation(L);
     else return 0;
 }
 
-const char * computer_keys[10] = {
+const char * computer_keys[11] = {
     "turnOn",
     "shutdown",
     "reboot",
@@ -149,7 +158,8 @@ const char * computer_keys[10] = {
     "setBlock",
     "setSlotContents",
     "setPosition",
-    "teleport"
+    "teleport",
+    "getLocation"
 };
 
-library_t turtle::methods = {"computer", 10, computer_keys, NULL, nullptr, nullptr};
+library_t turtle::methods = {"computer", 11, computer_keys, NULL, nullptr, nullptr};

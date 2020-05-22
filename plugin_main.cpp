@@ -11,6 +11,8 @@ extern "C" {
 }
 #include <Computer.hpp>
 #include <functional>
+#include <json/json.h>
+#include <cstdio>
 #include "peripheral.hpp"
 
 #define PLUGIN_VERSION 2
@@ -24,6 +26,23 @@ extern Computer *(*_startComputer)(int);
 extern void* (*_queueTask)(std::function<void*(void*)>, void*, bool);
 extern Computer *(*getComputerById)(int);
 extern int selectedRenderer;
+extern Json::Value itemDatabase;
+extern Json::Value blockDatabase;
+extern Json::Value recipeDatabase;
+extern const char itemDatabaseData[];
+extern const unsigned int itemDatabaseData_len;
+extern const char blockDatabaseData[];
+extern const unsigned int blockDatabaseData_len;
+extern const char recipeDatabaseData[];
+extern const unsigned int recipeDatabaseData_len;
+
+void justParseTheJson(const char * str, unsigned int len, Json::Value &root) {
+    Json::CharReaderBuilder builder;
+    JSONCPP_STRING err;
+    const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    if (!reader->parse(str, str + len, &root, &err))
+        printf("Error parsing JSON: %s\n", err.c_str());
+}
 
 int registerCapability(lua_State *L) {
     std::string m(lua_tostring(L, 2));
@@ -40,6 +59,9 @@ extern "C" {
 _declspec(dllexport)
 #endif
 int luaopen_turtle(lua_State *L) {
+    if (!itemDatabase) justParseTheJson(itemDatabaseData, itemDatabaseData_len, itemDatabase);
+    if (!blockDatabase) justParseTheJson(blockDatabaseData, blockDatabaseData_len, blockDatabase);
+    if (!recipeDatabase) justParseTheJson(recipeDatabaseData, recipeDatabaseData_len, recipeDatabase);
     Computer * comp = get_comp(L);
     if (comp->userdata.find(TURTLE_PLUGIN_USERDATA_KEY) != comp->userdata.end()) luaL_register(L, "turtle", turtle_lib);
     else lua_pushnil(L);
